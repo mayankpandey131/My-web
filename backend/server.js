@@ -8,7 +8,7 @@ const app = express();
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }));
 app.use(express.json());
 
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI)
   .then(() => console.log('✅ MongoDB Connected'))
   .catch(err => { console.error('❌ MongoDB Error:', err.message); process.exit(1); });
 
