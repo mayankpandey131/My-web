@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import './Panel.css';
 
-const BLANK = { title:'', issuer:'', issueDate:'', expiryDate:'', credentialId:'', credentialUrl:'', image:'', skills:[] };
+const BLANK = { image:'', description:'' };
 
 export default function CertsPanel({ onCountChange }) {
   const { API } = useAuth();
@@ -12,7 +12,6 @@ export default function CertsPanel({ onCountChange }) {
   const [modal,    setModal]    = useState(false);
   const [editId,   setEditId]   = useState(null);
   const [form,     setForm]     = useState(BLANK);
-  const [skillIn,  setSkillIn]  = useState('');
   const [saving,   setSaving]   = useState(false);
   const [deleting, setDeleting] = useState(null);
 
@@ -24,20 +23,19 @@ export default function CertsPanel({ onCountChange }) {
 
   useEffect(() => { load(); }, []);
 
-  const openAdd  = () => { setForm(BLANK); setEditId(null); setSkillIn(''); setModal(true); };
+  const openAdd  = () => { setForm(BLANK); setEditId(null); setModal(true); };
   const openEdit = (c) => {
-    setForm({...c, skills:[...(c.skills||[])], issueDate:c.issueDate?c.issueDate.split('T')[0]:'', expiryDate:c.expiryDate?c.expiryDate.split('T')[0]:''});
-    setEditId(c._id); setSkillIn(''); setModal(true);
+    setForm({ image:c.image || '', description: c.description || '' });
+    setEditId(c._id); setModal(true);
   };
   const close = () => { setModal(false); setEditId(null); };
 
-  const addSkill = (e) => {
-    if ((e.key==='Enter'||e.key===',') && skillIn.trim()) {
-      e.preventDefault();
-      const s = skillIn.trim().replace(/,$/,'');
-      if (s && !form.skills.includes(s)) setForm(f=>({...f,skills:[...f.skills,s]}));
-      setSkillIn('');
-    }
+  const handleImageFile = async (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setForm(f => ({ ...f, image: reader.result }));
+    reader.onerror = () => toast.error('Failed to read image file');
+    reader.readAsDataURL(file);
   };
 
   const save = async (e) => {
@@ -92,9 +90,8 @@ export default function CertsPanel({ onCountChange }) {
                   {c.image?<img src={c.image} alt="cert"/>:<span>🏆</span>}
                 </div>
                 <div className="panel-row-info">
-                  <div className="panel-row-title">{c.title}</div>
-                  <div className="panel-row-sub" style={{color:'var(--purple-light)'}}>{c.issuer}</div>
-                  <div className="panel-row-sub">Issued {fmtDate(c.issueDate)}</div>
+                  <div className="panel-row-title">Certificate</div>
+                  <div className="panel-row-sub" style={{color:'var(--purple-light)'}}>{c.description || 'No description provided'}</div>
                 </div>
                 <div className="panel-row-actions">
                   <button className="btn btn-ghost btn-sm" onClick={()=>openEdit(c)}>Edit</button>
@@ -113,49 +110,13 @@ export default function CertsPanel({ onCountChange }) {
             <div className="mhead"><h2>{editId?'Edit Certificate':'Add Certificate'}</h2><button className="mclose" onClick={close}>×</button></div>
             <form onSubmit={save} className="mform">
               <div className="fgroup">
-                <label className="flabel">Certificate Name *</label>
-                <input className="finput" placeholder="AWS Solutions Architect" value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} required/>
+                <label className="flabel">Certificate Image (upload file)</label>
+                <input type="file" className="finput" accept="image/*" onChange={e => handleImageFile(e.target.files?.[0])} />
+                {form.image && (<img src={form.image} alt="certificate preview" style={{ marginTop: 8, maxWidth: '100%', maxHeight: 140, borderRadius: 6 }} />)}
               </div>
               <div className="fgroup">
-                <label className="flabel">Issuing Organization *</label>
-                <input className="finput" placeholder="Amazon Web Services" value={form.issuer} onChange={e=>setForm(f=>({...f,issuer:e.target.value}))} required/>
-              </div>
-              <div className="fgrid2">
-                <div className="fgroup">
-                  <label className="flabel">Issue Date *</label>
-                  <input type="date" className="finput" value={form.issueDate} onChange={e=>setForm(f=>({...f,issueDate:e.target.value}))} required/>
-                </div>
-                <div className="fgroup">
-                  <label className="flabel">Expiry Date</label>
-                  <input type="date" className="finput" value={form.expiryDate} onChange={e=>setForm(f=>({...f,expiryDate:e.target.value}))}/>
-                </div>
-              </div>
-              <div className="fgrid2">
-                <div className="fgroup">
-                  <label className="flabel">Credential ID</label>
-                  <input className="finput" placeholder="ABC-123" value={form.credentialId} onChange={e=>setForm(f=>({...f,credentialId:e.target.value}))}/>
-                </div>
-                <div className="fgroup">
-                  <label className="flabel">Badge Image URL</label>
-                  <input className="finput" placeholder="https://..." value={form.image} onChange={e=>setForm(f=>({...f,image:e.target.value}))}/>
-                </div>
-              </div>
-              <div className="fgroup">
-                <label className="flabel">Verify URL</label>
-                <input className="finput" placeholder="https://credly.com/..." value={form.credentialUrl} onChange={e=>setForm(f=>({...f,credentialUrl:e.target.value}))}/>
-              </div>
-              <div className="fgroup">
-                <label className="flabel">Skills (Enter or comma)</label>
-                <input className="finput" placeholder="Cloud, AWS, Security..." value={skillIn} onChange={e=>setSkillIn(e.target.value)} onKeyDown={addSkill}/>
-                {form.skills.length>0 && (
-                  <div className="chips" style={{marginTop:8}}>
-                    {form.skills.map(s=>(
-                      <span key={s} className="tag-pill">{s}
-                        <button type="button" className="tag-x" onClick={()=>setForm(f=>({...f,skills:f.skills.filter(x=>x!==s)}))}>×</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <label className="flabel">Description</label>
+                <textarea className="finput" style={{ minHeight: 100 }} placeholder="Summary of what this certificate is for" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required />
               </div>
               <div className="mfoot">
                 <button type="button" className="btn btn-ghost" onClick={close}>Cancel</button>

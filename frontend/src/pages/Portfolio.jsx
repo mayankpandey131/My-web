@@ -165,17 +165,7 @@ export default function Portfolio() {
                       {c.image ? <img src={c.image} alt="cert" /> : '🏆'}
                     </div>
                     <div className="pf-cert-info">
-                      <h3 className="pf-cert-title">{c.title}</h3>
-                      <p className="pf-cert-issuer">{c.issuer}</p>
-                      <p className="pf-cert-date">Issued {fmtDate(c.issueDate)}{c.expiryDate ? ` · Expires ${fmtDate(c.expiryDate)}` : ''}</p>
-                      {c.skills?.length > 0 && (
-                        <div className="chips" style={{ margin:'8px 0' }}>
-                          {c.skills.map(s => <span key={s} className="chip chip-purple">{s}</span>)}
-                        </div>
-                      )}
-                      {c.credentialUrl && (
-                        <a href={c.credentialUrl} target="_blank" rel="noreferrer" className="pf-ext-link" style={{ marginTop:6 }}>Verify Certificate →</a>
-                      )}
+                      <p className="pf-cert-desc">{c.description || 'No description added.'}</p>
                     </div>
                   </div>
                 ))}
