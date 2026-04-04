@@ -10,10 +10,15 @@ const fs = require('fs');
 
 const app = express();
 
-// Middleware
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
+// ✅ CORS FIX (allow all for now)
+app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
+
+// ✅ Root route (Render test)
+app.get("/", (req, res) => {
+  res.send("API is running 🚀");
+});
 
 // Create uploads directory
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
@@ -21,153 +26,84 @@ if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
 // Multer config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname.replace(/\s/g, '_'))
+  filename: (req, file, cb) =>
+    cb(null, Date.now() + '-' + file.originalname.replace(/\s/g, '_'))
 });
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }
+});
 
-// MongoDB Connection
-mongoose.connect('mongodb://localhost:27017/myweb', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log('✅ MongoDB connected'))
+// ✅ MongoDB Atlas Connection (FIXED)
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.error('❌ MongoDB error:', err));
 
 // =================== MODELS ===================
 
-// Known/Verified Colleges list
-const verifiedColleges = [
-  "IIT Bombay", "IIT Delhi", "IIT Madras", "IIT Kanpur", "IIT Kharagpur",
-  "IIT Roorkee", "IIT Guwahati", "IIT Hyderabad", "NIT Trichy", "NIT Surathkal",
-  "NIT Warangal", "NIT Calicut", "BITS Pilani", "BITS Goa", "BITS Hyderabad",
-  "Delhi University", "Mumbai University", "Anna University", "VTU", "Pune University",
-  "Osmania University", "Jadavpur University", "Manipal University", "SRM University",
-  "Amity University", "Vellore Institute of Technology", "Lovely Professional University",
-  "Symbiosis International University", "Christ University", "Bangalore University",
-  "Calicut University", "Kerala University", "MG University", "Cochin University",
-  "CUSAT", "IISc Bangalore", "JNTU Hyderabad", "JNTU Kakinada", "Andhra University",
-  "Sri Venkateswara University", "Kakatiya University", "University of Hyderabad",
-  "Allahabad University", "BHU", "AMU", "Calcutta University", "Presidency University",
-  "Madras University", "Bharathiar University", "Thiruvalluvar University",
-  "Periyar University", "Alagappa University", "Mother Teresa University",
-  "Saveetha University", "Sathyabama University", "Hindustan University",
-  "Other Recognized University", "Government College of Engineering",
-  "Regional Engineering College", "State Engineering College"
-];
+const verifiedColleges = ["IIT Bombay", "IIT Delhi", "NIT Trichy", "Mumbai University"];
 
 const UserSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true, trim: true },
-  email: { type: String, required: true, unique: true, lowercase: true },
+  username: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   fullName: { type: String, required: true },
   collegeName: { type: String, required: true },
   isCollegeVerified: { type: Boolean, default: false },
   degree: { type: String, required: true },
   stream: { type: String, required: true },
-  passingYear: { type: Number, required: true },
-  resumeLink: { type: String, default: '' },
-  bio: { type: String, default: '' },
-  profilePicture: { type: String, default: '' },
-  skills: [String],
-  socialLinks: {
-    github: { type: String, default: '' },
-    linkedin: { type: String, default: '' },
-    twitter: { type: String, default: '' },
-    website: { type: String, default: '' }
-  },
-  createdAt: { type: Date, default: Date.now }
-});
-
-const ProjectSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  title: { type: String, required: true },
-  description: { type: String, required: true },
-  technologies: [String],
-  videoUrl: { type: String, default: '' },
-  githubLink: { type: String, default: '' },
-  liveLink: { type: String, default: '' },
-  thumbnail: { type: String, default: '' },
-  images: [String],
-  featured: { type: Boolean, default: false },
-  views: { type: Number, default: 0 },
-  likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  createdAt: { type: Date, default: Date.now }
-});
-
-const CertificateSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  title: { type: String, required: true },
-  issuedBy: { type: String, required: true },
-  description: { type: String, default: '' },
-  issueDate: { type: Date },
-  expiryDate: { type: Date },
-  credentialId: { type: String, default: '' },
-  credentialUrl: { type: String, default: '' },
-  certificateFile: { type: String, default: '' },
-  skills: [String],
-  createdAt: { type: Date, default: Date.now }
+  passingYear: { type: Number, required: true }
 });
 
 const User = mongoose.model('User', UserSchema);
-const Project = mongoose.model('Project', ProjectSchema);
-const Certificate = mongoose.model('Certificate', CertificateSchema);
 
-// =================== MIDDLEWARE ===================
+// =================== AUTH ===================
 
 const auth = async (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: 'Access denied' });
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'myweb_secret_2024');
-    req.user = await User.findById(decoded.id).select('-password');
-    if (!req.user) return res.status(401).json({ error: 'User not found' });
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
     next();
-  } catch (err) {
+  } catch {
     res.status(401).json({ error: 'Invalid token' });
   }
 };
 
-// =================== AUTH ROUTES ===================
-
-// Get verified colleges list
-app.get('/api/colleges', (req, res) => {
-  res.json({ colleges: verifiedColleges });
-});
+// =================== ROUTES ===================
 
 // Register
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, email, password, fullName, collegeName, degree, stream, passingYear, resumeLink } = req.body;
+    const { username, email, password, fullName, collegeName, degree, stream, passingYear } = req.body;
 
-    // Validate required fields
     if (!username || !email || !password || !fullName || !collegeName || !degree || !stream || !passingYear) {
-      return res.status(400).json({ error: 'All fields are required' });
+      return res.status(400).json({ error: 'All fields required' });
     }
 
-    // Check existing user
-    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
-    if (existingUser) {
-      return res.status(400).json({ error: existingUser.email === email ? 'Email already registered' : 'Username already taken' });
-    }
+    const existing = await User.findOne({ $or: [{ email }, { username }] });
+    if (existing) return res.status(400).json({ error: 'User exists' });
 
-    // Check college verification
-    const isCollegeVerified = verifiedColleges.some(c => c.toLowerCase() === collegeName.toLowerCase());
+    const hashed = await bcrypt.hash(password, 10);
 
-    const hashedPassword = await bcrypt.hash(password, 12);
-    const user = new User({
-      username, email, password: hashedPassword, fullName,
-      collegeName, isCollegeVerified, degree, stream,
-      passingYear: parseInt(passingYear),
-      resumeLink: resumeLink || ''
+    const user = await User.create({
+      username,
+      email,
+      password: hashed,
+      fullName,
+      collegeName,
+      isCollegeVerified: verifiedColleges.includes(collegeName),
+      degree,
+      stream,
+      passingYear
     });
 
-    await user.save();
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'myweb_secret_2024', { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-    res.status(201).json({
-      message: 'Account created successfully!',
-      token,
-      user: { id: user._id, username: user.username, email: user.email, fullName: user.fullName, isCollegeVerified }
-    });
+    res.json({ token, user });
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -177,218 +113,28 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { emailOrUsername, password } = req.body;
+
     const user = await User.findOne({
-      $or: [{ email: emailOrUsername.toLowerCase() }, { username: emailOrUsername }]
+      $or: [
+        { email: emailOrUsername.toLowerCase() },
+        { username: emailOrUsername }
+      ]
     });
 
-    if (!user || !await bcrypt.compare(password, user.password)) {
+    if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'myweb_secret_2024', { expiresIn: '7d' });
-    res.json({
-      token,
-      user: { id: user._id, username: user.username, email: user.email, fullName: user.fullName, isCollegeVerified: user.isCollegeVerified }
-    });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({ token, user });
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Get current user
-app.get('/api/auth/me', auth, async (req, res) => {
-  res.json(req.user);
-});
-
-// =================== USER ROUTES ===================
-
-// Get user profile by username
-app.get('/api/users/:username', async (req, res) => {
-  try {
-    const user = await User.findOne({ username: req.params.username }).select('-password');
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(user);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Update profile
-app.put('/api/users/profile', auth, upload.single('profilePicture'), async (req, res) => {
-  try {
-    const updates = { ...req.body };
-    if (req.file) updates.profilePicture = `/uploads/${req.file.filename}`;
-    if (updates.skills && typeof updates.skills === 'string') {
-      updates.skills = updates.skills.split(',').map(s => s.trim()).filter(Boolean);
-    }
-    if (updates.socialLinks && typeof updates.socialLinks === 'string') {
-      updates.socialLinks = JSON.parse(updates.socialLinks);
-    }
-    delete updates.password; delete updates.email; delete updates.username;
-
-    const user = await User.findByIdAndUpdate(req.user._id, updates, { new: true }).select('-password');
-    res.json(user);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// =================== PROJECT ROUTES ===================
-
-app.get('/api/projects/user/:username', async (req, res) => {
-  try {
-    const user = await User.findOne({ username: req.params.username });
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    const projects = await Project.find({ userId: user._id }).sort({ createdAt: -1 });
-    res.json(projects);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/projects', auth, upload.fields([{ name: 'thumbnail' }, { name: 'images', maxCount: 5 }]), async (req, res) => {
-  try {
-    const { title, description, technologies, videoUrl, githubLink, liveLink, featured } = req.body;
-    const projectData = {
-      userId: req.user._id, title, description,
-      technologies: technologies ? technologies.split(',').map(t => t.trim()) : [],
-      videoUrl: videoUrl || '', githubLink: githubLink || '', liveLink: liveLink || '',
-      featured: featured === 'true'
-    };
-    if (req.files?.thumbnail) projectData.thumbnail = `/uploads/${req.files.thumbnail[0].filename}`;
-    if (req.files?.images) projectData.images = req.files.images.map(f => `/uploads/${f.filename}`);
-
-    const project = new Project(projectData);
-    await project.save();
-    res.status(201).json(project);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/api/projects/:id', auth, upload.fields([{ name: 'thumbnail' }, { name: 'images', maxCount: 5 }]), async (req, res) => {
-  try {
-    const project = await Project.findById(req.params.id);
-    if (!project) return res.status(404).json({ error: 'Project not found' });
-    if (project.userId.toString() !== req.user._id.toString()) return res.status(403).json({ error: 'Unauthorized' });
-
-    const updates = { ...req.body };
-    if (updates.technologies) updates.technologies = updates.technologies.split(',').map(t => t.trim());
-    if (req.files?.thumbnail) updates.thumbnail = `/uploads/${req.files.thumbnail[0].filename}`;
-    if (req.files?.images) updates.images = req.files.images.map(f => `/uploads/${f.filename}`);
-
-    const updated = await Project.findByIdAndUpdate(req.params.id, updates, { new: true });
-    res.json(updated);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/projects/:id', auth, async (req, res) => {
-  try {
-    const project = await Project.findById(req.params.id);
-    if (!project) return res.status(404).json({ error: 'Project not found' });
-    if (project.userId.toString() !== req.user._id.toString()) return res.status(403).json({ error: 'Unauthorized' });
-    await Project.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Project deleted' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Like project
-app.post('/api/projects/:id/like', auth, async (req, res) => {
-  try {
-    const project = await Project.findById(req.params.id);
-    const liked = project.likes.includes(req.user._id);
-    if (liked) project.likes.pull(req.user._id);
-    else project.likes.push(req.user._id);
-    await project.save();
-    res.json({ likes: project.likes.length, liked: !liked });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// =================== CERTIFICATE ROUTES ===================
-
-app.get('/api/certificates/user/:username', async (req, res) => {
-  try {
-    const user = await User.findOne({ username: req.params.username });
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    const certs = await Certificate.find({ userId: user._id }).sort({ createdAt: -1 });
-    res.json(certs);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/certificates', auth, upload.single('certificateFile'), async (req, res) => {
-  try {
-    const { title, issuedBy, description, issueDate, expiryDate, credentialId, credentialUrl, skills } = req.body;
-    const certData = {
-      userId: req.user._id, title, issuedBy,
-      description: description || '',
-      credentialId: credentialId || '', credentialUrl: credentialUrl || '',
-      skills: skills ? skills.split(',').map(s => s.trim()) : []
-    };
-    if (issueDate) certData.issueDate = new Date(issueDate);
-    if (expiryDate) certData.expiryDate = new Date(expiryDate);
-    if (req.file) certData.certificateFile = `/uploads/${req.file.filename}`;
-
-    const cert = new Certificate(certData);
-    await cert.save();
-    res.status(201).json(cert);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/api/certificates/:id', auth, upload.single('certificateFile'), async (req, res) => {
-  try {
-    const cert = await Certificate.findById(req.params.id);
-    if (!cert) return res.status(404).json({ error: 'Certificate not found' });
-    if (cert.userId.toString() !== req.user._id.toString()) return res.status(403).json({ error: 'Unauthorized' });
-
-    const updates = { ...req.body };
-    if (updates.skills) updates.skills = updates.skills.split(',').map(s => s.trim());
-    if (req.file) updates.certificateFile = `/uploads/${req.file.filename}`;
-
-    const updated = await Certificate.findByIdAndUpdate(req.params.id, updates, { new: true });
-    res.json(updated);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/certificates/:id', auth, async (req, res) => {
-  try {
-    const cert = await Certificate.findById(req.params.id);
-    if (!cert) return res.status(404).json({ error: 'Certificate not found' });
-    if (cert.userId.toString() !== req.user._id.toString()) return res.status(403).json({ error: 'Unauthorized' });
-    await Certificate.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Certificate deleted' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// =================== SEARCH ===================
-app.get('/api/search/users', async (req, res) => {
-  try {
-    const { q } = req.query;
-    const users = await User.find({
-      $or: [
-        { username: { $regex: q, $options: 'i' } },
-        { fullName: { $regex: q, $options: 'i' } },
-        { stream: { $regex: q, $options: 'i' } }
-      ]
-    }).select('-password').limit(10);
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// =================== SERVER ===================
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
